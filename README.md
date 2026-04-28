@@ -1,8 +1,6 @@
 # Maximum Independent Set Project
 
-This repository implements the computational project from `project_guidelines.png`.
-It compares greedy and integer-programming approaches for maximum independent
-set on Erdos-Renyi graphs `G(n, d/n)` and on one SNAP real network.
+This repository compares greedy and integer-programming approaches for maximum independent set on Erdos-Renyi graphs `G(n, d/n)` and on one SNAP real network.
 
 ## Mathematical Formulation
 
