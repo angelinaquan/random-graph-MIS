@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "mis_project_matplotlib"))
+os.environ.setdefault("XDG_CACHE_HOME", str(Path(tempfile.gettempdir()) / "mis_project_cache"))
 
 import matplotlib
 

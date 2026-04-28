@@ -36,6 +36,12 @@ PYTHONPATH=src python3 -m mis_project.experiments er \
   --output results/er_results.csv
 ```
 
+Or run the starter script:
+
+```bash
+scripts/run_er_d20_starter.sh
+```
+
 For a quick run without IP:
 
 ```bash
@@ -54,6 +60,12 @@ PYTHONPATH=src python3 -m mis_project.experiments snap \
   --greedy-repeats 200 \
   --time-limit 600 \
   --output results/snap_results.csv
+```
+
+This repository includes a convenience script for `ca-GrQc`:
+
+```bash
+scripts/run_ca_grqc.sh
 ```
 
 SNAP dataset index: <https://snap.stanford.edu/data/index.html>
@@ -108,5 +120,5 @@ The experiment CSVs include:
 
 ## Report
 
-Use `report_template.md` as the writeup scaffold. Fill in tables from
-`results/*.csv` and plots from `figures/*.png`.
+Use `report_template.md` as a blank writeup scaffold, or start from
+`report_draft.md`, which already includes the starter ER and `ca-GrQc` results.
