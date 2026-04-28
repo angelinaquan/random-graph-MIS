@@ -7,8 +7,12 @@
 \usepackage{hyperref}
 \usepackage{xcolor}
 \usepackage{listings}
+\usepackage{enumitem}
 
 \graphicspath{{figures/}}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+\linespread{1.04}
 
 \lstdefinestyle{commands}{
   basicstyle=\ttfamily\small,
@@ -17,102 +21,356 @@
   backgroundcolor=\color{gray!8}
 }
 
-\title{Maximum Independent Set: Computational Project}
-\author{}
+\title{Maximum Independent Set in Random and Real Networks}
+\author{Computational Project Report}
 \date{}
 
 \begin{document}
 
 \maketitle
 
-\section{Problem}
+\begin{abstract}
+This report studies the maximum independent set problem on sparse graphs. The
+project question asks whether an integer-programming (IP) formulation can solve
+instances of the Erdos--Renyi model $G(n,d/n)$ past the greedy threshold
+$(\log d/d)n$, and how the same approach behaves on a real network from the
+Stanford Network Analysis Project (SNAP). I implemented the standard binary IP
+formulation for maximum independent set, compared it with repeated greedy
+heuristics, and tested it on random graphs with $d=20$ and on the SNAP
+\texttt{ca-GrQc} collaboration graph. For $d=20$, the asymptotic greedy scale is
+$0.1498n$ and the asymptotic optimum scale is $0.2996n$. In the starter random
+graph experiment, IP proved optimality for $n=100$ and found independent sets of
+size $19$--$20$, which are above the greedy threshold but below the large-$d$
+prediction $2(\log d/d)n$. At $n=200$, the SciPy/HiGHS IP run reached the
+30-second time limit without returning an incumbent, while greedy immediately
+found feasible sets of size $36$--$39$, again above the greedy threshold. On
+\texttt{ca-GrQc}, IP proved an optimum of $2458$ vertices in under one second,
+and repeated greedy found the same value in the main run. This real-network
+optimum lies between the ER-style estimates based only on the average degree.
+\end{abstract}
 
-We compare greedy and integer-programming methods for maximum independent set on
-Erdos--Renyi graphs $G(n,d/n)$ and on a real SNAP network.
+\section{Project Questions and Summary of Answers}
 
-For a graph $G=(V,E)$, the integer-programming formulation is
-\begin{align*}
-\max \quad & \sum_{i \in V} x_i \\
-\text{s.t.} \quad & x_u + x_v \leq 1 && \text{for every edge } (u,v) \in E, \\
-& x_i \in \{0,1\} && \text{for every vertex } i \in V.
-\end{align*}
-Here $x_i=1$ means vertex $i$ is included in the independent set.
-
-For $G(n,d/n)$, the asymptotic reference values are
+The assignment asks for a computational investigation of maximum independent
+set on two graph families. The first family is the Erdos--Renyi random graph
+$G(n,d/n)$, where $d$ is a fixed constant independent of $n$. The known
+asymptotic behavior says that, under the double limit first $n \to \infty$ and
+then $d \to \infty$, the largest independent set has size about
 \[
-\text{greedy scale} = \frac{\log d}{d}n,
-\qquad
-\text{optimum scale} = \frac{2\log d}{d}n.
+  \alpha(G(n,d/n)) \approx \frac{2\log d}{d}n.
 \]
-For $d=20$, these are approximately $0.1498n$ and $0.2996n$.
+The standard greedy algorithm reaches only about
+\[
+  \frac{\log d}{d}n,
+\]
+so there is a factor-of-two gap between the asymptotic optimum and the
+algorithmic threshold. The computational question is whether a generic IP
+solver can cross this greedy threshold on graphs with a few thousand vertices,
+for example $d=20$.
 
-\section{Algorithms}
+The second family is a real network from SNAP. The assignment asks whether IP
+can find optimal solutions on such a graph, whether the optimum is close to the
+theoretical ER prediction, and how greedy performs on a real-life network.
 
-The greedy baseline repeats random-order greedy and also tries a minimum-degree
-greedy heuristic, keeping the largest feasible independent set found. In the
-random-order method, vertices are shuffled, and a vertex is added if none of its
-neighbors has already been selected.
+The short answers from my experiments are:
+\begin{itemize}[leftmargin=*]
+  \item The implemented IP formulation is correct and exact when the solver
+  proves optimality. It uses one binary variable per vertex and one packing
+  constraint per edge.
+  \item On $G(n,20/n)$ with the 30-second starter limit, IP solved all three
+  $n=100$ instances exactly, with optimum sizes $20,19,20$.
+  \item Those $n=100$ optima are above the greedy threshold
+  $(\log 20/20)n \approx 14.98$, so IP does solve beyond the threshold at this
+  small size.
+  \item At $n=200$, the same IP implementation hit the time limit and returned
+  no incumbent in the recorded runs. Therefore these starter runs do not show
+  that IP can scale to the few-thousand-vertex ER regime.
+  \item Greedy was very fast on the ER instances and found sets above
+  $(\log d/d)n$ for both $n=100$ and $n=200$.
+  \item On the SNAP \texttt{ca-GrQc} collaboration graph, IP proved optimality
+  quickly and found $\alpha(G)=2458$.
+  \item Repeated greedy also found an independent set of size $2458$ in the
+  main \texttt{ca-GrQc} run, so greedy matched the optimum on this real graph.
+  \item The \texttt{ca-GrQc} optimum is not well predicted by the ER formula
+  using only the average degree. It lies between the ER greedy and ER optimum
+  reference values.
+\end{itemize}
 
-The IP model uses one binary variable per vertex and one edge constraint per
-edge. It is solved with SciPy's MILP interface to HiGHS. For each run we record
-the incumbent size, solver status, runtime, best bound, and MIP gap.
+\section{Mathematical Formulation}
 
-\section{Erdos--Renyi Starter Results}
+Let $G=(V,E)$ be a simple undirected graph. An independent set is a subset
+$S \subseteq V$ such that no edge has both endpoints in $S$. The maximum
+independent set problem asks for
+\[
+  \alpha(G) = \max\{|S|: S \subseteq V,\; S \text{ is independent}\}.
+\]
+The problem is NP-hard in general, but it has a very compact integer
+programming formulation. For each vertex $i \in V$, introduce a binary decision
+variable $x_i$:
+\[
+  x_i =
+  \begin{cases}
+  1, & \text{if vertex } i \text{ is included in the independent set},\\
+  0, & \text{otherwise}.
+  \end{cases}
+\]
+Then the maximum independent set IP is
+\begin{align}
+\max \quad & \sum_{i \in V} x_i \label{eq:ip-obj}\\
+\text{s.t.} \quad & x_u + x_v \leq 1 && \text{for every edge } (u,v) \in E,
+  \label{eq:ip-edge}\\
+& x_i \in \{0,1\} && \text{for every vertex } i \in V. \label{eq:ip-bin}
+\end{align}
+The edge constraints are exactly the independent-set condition. If $(u,v)$ is
+an edge, then $u$ and $v$ cannot both be selected, so the sum of the two binary
+variables is at most one. Conversely, if a binary vector satisfies all
+constraints \eqref{eq:ip-edge}, then the vertices with $x_i=1$ contain no
+adjacent pair, so they form an independent set. Maximizing
+\eqref{eq:ip-obj} therefore maximizes the independent-set size.
 
-The starter experiment used $d=20$, seeds $0,1,2$, and a 30-second IP time
-limit.
+The formulation size is linear in the graph size: there are $|V|$ binary
+variables and $|E|$ linear constraints. For $G(n,d/n)$ with fixed $d$, the
+expected number of edges is
+\[
+  \binom{n}{2}\frac{d}{n} \approx \frac{dn}{2},
+\]
+so the model is sparse. This sparsity is important, because it keeps the model
+building step small even when $n$ is in the thousands. The hard part is not
+writing down the model; it is the branch-and-bound search needed to prove
+optimality or find good incumbents.
 
+\section{Theoretical Benchmarks for $G(n,d/n)$}
+
+The random graph $G(n,d/n)$ has average degree close to $d$. In the sparse
+constant-degree regime, the largest independent set occupies a positive
+fraction of the vertices. The assignment gives the benchmark
+\[
+  \alpha(G(n,d/n)) \approx \frac{2\log d}{d}n
+\]
+in the double-asymptotic sense. The word ``double'' matters: the statement is
+not a finite-sample formula for $n=100$ or $d=20$. It should be used as a
+reference scale, not as an exact prediction for the small graphs in the starter
+experiment.
+
+The greedy benchmark is half as large:
+\[
+  \text{greedy scale} = \frac{\log d}{d}n.
+\]
+For the value used here, $d=20$,
+\[
+  \frac{\log 20}{20} \approx 0.1497866,
+  \qquad
+  \frac{2\log 20}{20} \approx 0.2995732.
+\]
+Thus the two reference sizes are:
+\[
+\begin{array}{c|cc}
+n & (\log 20/20)n & (2\log 20/20)n\\
+\hline
+100 & 14.98 & 29.96\\
+200 & 29.96 & 59.91\\
+1000 & 149.79 & 299.57\\
+2000 & 299.57 & 599.15
+\end{array}
+\]
+The central empirical question is whether IP can produce and prove independent
+sets noticeably above $0.1498n$ in this random-graph regime.
+
+\section{Implementation}
+
+The codebase has three main parts. The graph utilities generate ER instances,
+load SNAP edge lists, clean graphs into simple undirected graphs, and compute
+statistics. The solver module contains the greedy and IP solvers. The
+experiment runner records graph statistics, theory columns, greedy results, IP
+incumbents, solver status, runtime, best bound, and MIP gap in CSV files.
+
+\subsection{Graph Generation and Loading}
+
+For the ER experiments, the graph is generated as $G(n,p)$ with
+\[
+  p = d/n.
+\]
+The implementation uses NetworkX's fast $G(n,p)$ generator and removes any
+self-loops. Since $d$ is fixed, the expected average degree is close to $d$ and
+the expected edge count is close to $dn/2$.
+
+For the SNAP experiment, the loader reads a compressed or uncompressed
+whitespace-separated edge list, ignores comment lines beginning with
+\texttt{\#}, converts the graph to a simple undirected graph, removes
+self-loops, and relabels vertices to consecutive integer labels. This relabeling
+is not mathematically important, but it makes the IP variable indexing simple.
+
+\subsection{Greedy Baselines}
+
+I used repeated greedy rather than only one deterministic pass. The first greedy
+variant is random-order greedy:
+\begin{enumerate}[leftmargin=*]
+  \item Shuffle the vertices.
+  \item Scan vertices in that order.
+  \item Add a vertex if none of its already selected neighbors forbids it.
+  \item Mark its neighbors as forbidden.
+\end{enumerate}
+This always returns a maximal independent set: no remaining vertex can be added
+after the pass is complete. A maximal set need not be maximum, but it is fast to
+compute and gives a useful baseline.
+
+The second variant repeatedly selects a current minimum-degree vertex, adds it
+to the independent set, and removes that vertex together with all of its
+neighbors. This heuristic is natural for maximum independent set because choosing
+a low-degree vertex tends to exclude fewer future candidates.
+
+The reported greedy result is the best set found across multiple random-order
+runs and one minimum-degree run. In the starter ER experiment I used 50 repeats.
+For \texttt{ca-GrQc}, I used 100 repeats in the main run.
+
+\subsection{Integer Programming Solver}
+
+The IP solver constructs the binary formulation from
+\eqref{eq:ip-obj}--\eqref{eq:ip-bin}. In SciPy's \texttt{milp} interface, the
+solver minimizes, so the implementation minimizes $-\sum_i x_i$ instead of
+maximizing $\sum_i x_i$. The constraint matrix has two nonzero entries in each
+edge row:
+\[
+  A_{e,u}=1,\qquad A_{e,v}=1
+\]
+for $e=(u,v)$. The row upper bound is $1$. All variable lower bounds are $0$,
+all upper bounds are $1$, and all variables are declared integral.
+
+The solver returns an incumbent vector if it finds one, a status code, a runtime,
+and when available a dual bound and MIP gap. I interpret the statuses as follows:
+\begin{itemize}[leftmargin=*]
+  \item \texttt{optimal}: the solver proved that the incumbent is globally
+  optimal.
+  \item \texttt{limit\_reached}: the solver stopped because of the time limit.
+  The incumbent may be useful if one is returned, but optimality is not proved.
+  \item \texttt{infeasible}, \texttt{unbounded}, and \texttt{solver\_error}:
+  exceptional statuses for this model.
+\end{itemize}
+For this problem, infeasibility should not occur because the empty independent
+set is always feasible, and unboundedness should not occur because variables are
+bounded between 0 and 1.
+
+\section{Experimental Setup}
+
+The ER starter command was:
 \begin{lstlisting}[style=commands]
 scripts/run_er_d20_starter.sh
 \end{lstlisting}
+which expands to:
+\begin{lstlisting}[style=commands]
+PYTHONPATH=src python3 -m mis_project.experiments er \
+  --d 20 \
+  --n-values 100 200 \
+  --seeds 0 1 2 \
+  --greedy-repeats 50 \
+  --time-limit 30 \
+  --output results/er_d20_starter_results.csv
+\end{lstlisting}
+The SNAP command was:
+\begin{lstlisting}[style=commands]
+scripts/run_ca_grqc.sh
+\end{lstlisting}
+which runs:
+\begin{lstlisting}[style=commands]
+PYTHONPATH=src python3 -m mis_project.experiments snap \
+  data/ca-GrQc.txt.gz \
+  --greedy-repeats 100 \
+  --time-limit 300 \
+  --output results/ca_grqc_results.csv
+\end{lstlisting}
 
-The raw results are in \texttt{results/er\_d20\_starter\_results.csv}. The plot
-in Figure~\ref{fig:er-starter} compares greedy, IP incumbents, and the two
-theoretical reference fractions.
+The most important experimental design decision is the IP time limit. A short
+time limit is enough to test whether the formulation is usable out of the box,
+but it is not enough to prove that large ER instances are impossible. Therefore
+the ER results should be read as a performance measurement for this
+implementation and time budget, not as a theorem about all IP solvers.
 
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=0.78\linewidth]{er_d20_starter_fraction.png}
-  \caption{Independent set fraction on $G(n,20/n)$ for the starter ER runs.}
-  \label{fig:er-starter}
-\end{figure}
+\section{Results on Erdos--Renyi Graphs}
+
+Table~\ref{tab:er-raw} gives the raw starter results. The generated graphs have
+average degree close to 20, as expected. For $n=100$, IP solved all three seeds
+to optimality. For $n=200$, IP reached the 30-second time limit and did not
+return an incumbent in these runs.
 
 \begin{table}[htbp]
 \centering
-\caption{Starter results for $G(n,20/n)$ over seeds $0,1,2$.}
-\label{tab:er-starter}
-\begin{tabular}{rllll}
+\caption{Raw starter results for $G(n,20/n)$.}
+\label{tab:er-raw}
+\begin{tabular}{rrrrrrll}
 \toprule
-$n$ & Greedy sizes & IP sizes/status & $(\log d/d)n$ & $(2\log d/d)n$ \\
+$n$ & seed & $m$ & avg. deg. & greedy & IP & IP status & IP time \\
 \midrule
-100 & 18, 19, 20 & 20, 19, 20; all optimal & 14.98 & 29.96 \\
-200 & 39, 36, 39 & no incumbent returned in 30s & 29.96 & 59.91 \\
+100 & 0 & 1000 & 20.00 & 18 & 20 & optimal & 3.49s \\
+100 & 1 &  959 & 19.18 & 19 & 19 & optimal & 3.44s \\
+100 & 2 &  981 & 19.62 & 20 & 20 & optimal & 2.72s \\
+200 & 0 & 1961 & 19.61 & 39 &  0 & limit reached & 30.01s \\
+200 & 1 & 1978 & 19.78 & 36 &  0 & limit reached & 30.01s \\
+200 & 2 & 2002 & 20.02 & 39 &  0 & limit reached & 30.02s \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-For $n=100$, IP proves optimality quickly and beats the greedy threshold. For
-$n=200$, the SciPy/HiGHS IP run hit the 30-second time limit before returning an
-incumbent, while greedy still found sets well above $(\log d/d)n$.
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.80\linewidth]{er_d20_starter_fraction.png}
+  \caption{Independent set fraction on $G(n,20/n)$ for the starter ER runs.
+  Greedy and IP are compared with the reference fractions
+  $(\log d)/d$ and $2(\log d)/d$.}
+  \label{fig:er-starter}
+\end{figure}
 
-\section{SNAP Result: ca-GrQc}
+The $n=100$ results show that IP can cross the greedy threshold at small scale.
+For $d=20$, the threshold is $14.98$, and the proved optima are $19$ or $20$.
+These values are clearly above $14.98$. However, they are below the
+large-$d$ optimum reference $29.96$. This does not contradict the theory because
+$n=100$ is small and $d=20$ is only moderately large. The asymptotic expression
+$2(\log d/d)n$ is a reference scale, not a finite-$n$ guarantee.
+
+The $n=200$ results are more important for the scalability question. Greedy
+found sets of size $36,36,39$, while the threshold is $29.96$. Thus greedy itself
+already exceeds the asymptotic greedy scale in these finite instances. The IP
+solver, however, returned no incumbent under the 30-second time limit. In the
+CSV file this appears as \texttt{ip\_size=0} with status
+\texttt{limit\_reached}; this should not be interpreted as a statement that the
+maximum independent set has size zero. It means the solver did not provide a
+feasible incumbent before stopping.
+
+\subsection{Does IP Solve Beyond $(\log d/d)n$?}
+
+For the tested ER instances, the answer depends on the size:
+\begin{itemize}[leftmargin=*]
+  \item For $n=100$, yes. IP proves optimality and the optimum is above
+  $(\log d/d)n$.
+  \item For $n=200$, not under this implementation and 30-second time limit. The
+  run reaches the limit before returning a feasible incumbent.
+  \item For the intended ``few thousands'' scale, these starter data do not
+  support a claim that the generic IP approach is effective. The $n=200$ failure
+  is already a warning sign.
+\end{itemize}
+
+The main computational lesson is that the sparse formulation is easy to build
+but hard to solve on random graphs. Random sparse graphs with average degree 20
+do not have the special decomposable structure that made the real
+\texttt{ca-GrQc} graph easier. Branch-and-bound must distinguish many
+combinatorially similar choices, and proving optimality can become expensive
+quickly.
+
+\section{Results on the SNAP \texttt{ca-GrQc} Network}
 
 The real-network experiment used the SNAP \texttt{ca-GrQc} collaboration graph.
-The command was
-\begin{lstlisting}[style=commands]
-scripts/run_ca_grqc.sh
-\end{lstlisting}
-The raw results are in \texttt{results/ca\_grqc\_results.csv}.
+This is a coauthorship network in which vertices represent authors and edges
+represent collaborations. After loading the edge list as a simple undirected
+graph, the instance statistics are shown in Table~\ref{tab:snap-stats}.
 
 \begin{table}[htbp]
 \centering
-\caption{SNAP dataset statistics.}
+\caption{SNAP \texttt{ca-GrQc} graph statistics.}
 \label{tab:snap-stats}
 \begin{tabular}{lrrrrr}
 \toprule
 Dataset & $n$ & $m$ & Avg. degree & Components & Largest component \\
 \midrule
-ca-GrQc & 5241 & 14484 & 5.527 & 354 & 4158 \\
+\texttt{ca-GrQc} & 5241 & 14484 & 5.527 & 354 & 4158 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -121,54 +379,159 @@ ca-GrQc & 5241 & 14484 & 5.527 & 354 & 4158 \\
 \centering
 \caption{Algorithm results on \texttt{ca-GrQc}.}
 \label{tab:snap-results}
-\begin{tabular}{lrrl}
+\begin{tabular}{lrrrl}
 \toprule
-Method & Independent set size & Runtime & Status \\
+Method & Size & Fraction of $n$ & Runtime & Status \\
 \midrule
-Repeated greedy & 2458 & 1.80s & feasible \\
-IP & 2458 & 0.38s & optimal \\
+Repeated greedy & 2458 & 0.4690 & 1.80s & feasible \\
+IP & 2458 & 0.4690 & 0.38s & optimal \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.72\linewidth]{ca_grqc_comparison.png}
-  \caption{Greedy, IP, and ER-style predictions for \texttt{ca-GrQc}.}
+  \includegraphics[width=0.78\linewidth]{ca_grqc_comparison.png}
+  \caption{Greedy, IP, and ER-style predictions for the
+  \texttt{ca-GrQc} collaboration graph.}
   \label{fig:ca-grqc}
 \end{figure}
 
-The ER prediction using the average degree gives approximately 1621 for the
-greedy scale and 3242 for the asymptotic optimum scale. The actual optimum of
-2458 lies between these two values. This is not surprising: \texttt{ca-GrQc} is
-a real collaboration network with many components and non-ER structure, so
-average degree alone is not enough to predict the independent-set size.
+The IP result answers the first SNAP question directly: for this real network,
+IP can find and prove an optimal solution. The optimum is
+\[
+  \alpha(\texttt{ca-GrQc}) = 2458.
+\]
+The result is especially striking because the graph has more than five thousand
+vertices, while the ER run at $n=200$ timed out. This is not a contradiction.
+The computational difficulty of maximum independent set depends strongly on
+graph structure, not just on $n$ and $m$.
 
-\section{Next Experiments}
+\subsection{Comparison With ER-Style Predictions}
 
-The next step is to use longer IP limits for $n=200$ and then try
-$n=500,1000,2000$:
+If we use only the average degree of \texttt{ca-GrQc},
+\[
+  \bar d = \frac{2m}{n} \approx 5.527,
+\]
+and plug it into the ER formulas, we get:
+\[
+  \frac{\log \bar d}{\bar d}n \approx 1621.15,
+  \qquad
+  \frac{2\log \bar d}{\bar d}n \approx 3242.31.
+\]
+The actual optimum $2458$ lies between these two values. In fractional form,
+\[
+  2458/5241 \approx 0.469,
+\]
+while the two ER reference fractions are approximately $0.309$ and $0.619$.
+
+This comparison should be interpreted carefully. The ER formulas assume a
+homogeneous random graph with edge probability $d/n$. A collaboration network is
+not homogeneous. It has many connected components, a large component that does
+not include every vertex, clustering, local community structure, and degree
+heterogeneity. Average degree alone compresses all of this structure into one
+number. Therefore the ER prediction is useful as a scale comparison, but it is
+not a reliable predictor for the real network.
+
+\subsection{How Greedy Performs on the Real Network}
+
+Greedy performs very well on \texttt{ca-GrQc}. In the main run, repeated greedy
+found a feasible independent set of size $2458$, exactly matching the optimum
+proved by IP. This means the greedy gap on this instance is zero:
+\[
+  \frac{\text{IP optimum} - \text{greedy size}}{\text{IP optimum}}
+  = \frac{2458-2458}{2458}=0.
+\]
+The smoke run in the repository found $2456$, only two vertices below optimum,
+so the conclusion is robust: this real graph is easy for the greedy heuristic.
+
+One explanation is that many real collaboration graphs contain low-degree
+vertices and component structure that greedy can exploit. If a graph has many
+leaves, isolated small structures, or locally sparse regions, choosing
+low-degree vertices is often close to optimal. By contrast, sparse ER graphs
+with the same average degree are more homogeneous, so many local choices look
+similar and greedy has less exploitable structure.
+
+\section{Discussion}
+
+The experiments show three separate phenomena.
+
+First, the IP formulation is mathematically exact, but exactness is conditional
+on the solver finishing. At $n=100$ for $G(n,20/n)$, the solver finishes and
+proves optimum solutions. At $n=200$, the same formulation is already difficult
+under the starter time limit. This is the typical behavior of NP-hard problems:
+the model can be compact while the search tree still grows quickly.
+
+Second, greedy should not be dismissed just because its asymptotic guarantee is
+only half of the optimum scale. In the finite ER experiments, greedy found sets
+above $(\log d/d)n$. On \texttt{ca-GrQc}, repeated greedy matched the optimum.
+The assignment's asymptotic comparison describes a worst-case or limiting
+algorithmic barrier, but practical instances can be friendlier.
+
+Third, random graphs and real networks are computationally different. The ER
+graphs are synthetic, homogeneous, and highly symmetric in a probabilistic
+sense. The collaboration graph has many connected components and nonuniform
+local structure. Because the IP solver can branch over components and exploit
+constraints created by the real graph's structure, the larger SNAP graph was
+easier than the smaller ER instance.
+
+\section{Limitations and Further Experiments}
+
+The main limitation is that the ER experiment in this report is a starter run,
+not a full large-scale computational study. The assignment suggests trying $n$
+of order a few thousand with $d=20$. The current evidence says that the simple
+SciPy/HiGHS IP setup is unlikely to be reliable in that regime without stronger
+tuning, longer limits, or a more specialized formulation. However, the report
+does not include long IP runs for $n=500,1000,2000$.
+
+The next ER experiment should separate two goals:
+\begin{enumerate}[leftmargin=*]
+  \item Measure feasible solution quality, where a time-limited IP incumbent is
+  enough.
+  \item Measure exact solvability, where the solver must prove optimality and
+  report a zero MIP gap.
+\end{enumerate}
+The following command would extend the current experiment:
 \begin{lstlisting}[style=commands]
 PYTHONPATH=src python3 -m mis_project.experiments er \
   --d 20 \
-  --n-values 200 500 1000 \
+  --n-values 200 500 1000 2000 \
   --seeds 0 1 2 \
   --greedy-repeats 100 \
   --time-limit 300 \
   --output results/er_d20_larger_results.csv
 \end{lstlisting}
+For these larger runs, the report should record not only the incumbent size but
+also the best bound and MIP gap. An IP incumbent above $(\log d/d)n$ would show
+that IP found a better-than-threshold feasible solution, while a proof of
+optimality would be a much stronger statement.
 
-The final writeup should emphasize when IP proves optimality, when it only finds
-an incumbent, and when it fails to return an incumbent before the time limit.
+There are also several natural solver improvements. One can warm start the IP
+with the greedy solution if the solver interface supports it. One can add
+preprocessing rules for isolated vertices and degree-one vertices. One can solve
+connected components separately, since the maximum independent set size is
+additive across components. Finally, one can use a dedicated MIP solver such as
+Gurobi or CPLEX and compare its behavior with SciPy/HiGHS.
 
 \section{Conclusion}
 
-The starter runs show that IP can prove optimality on small random graphs, but
-the difficulty increases quickly as $n$ grows. Greedy is extremely fast and
-already beats the $(\log d/d)n$ threshold in the tested $d=20$ instances. On the
-real \texttt{ca-GrQc} network, greedy found an optimal solution, and the IP
-solver proved optimality quickly. The real-network result also shows that the
-Erdos--Renyi prediction based only on average degree is only a rough reference,
-not an accurate model for structured networks.
+The project questions can be answered as follows. The standard IP formulation
+for maximum independent set is simple and exact:
+\[
+  \max \sum_i x_i \quad \text{s.t. } x_u+x_v \leq 1 \text{ for each edge, }
+  x_i \in \{0,1\}.
+\]
+On small $G(n,20/n)$ instances with $n=100$, this IP solved beyond the greedy
+threshold and proved optimality. On $n=200$ random instances, it reached the
+time limit without an incumbent, so this implementation did not demonstrate
+scalability to the few-thousand-vertex ER regime. Greedy remained fast and found
+sets above the threshold in all tested ER instances.
+
+On the real SNAP \texttt{ca-GrQc} network, IP found and proved the optimum
+$2458$ quickly. Repeated greedy found the same solution in the main run. The
+actual optimum is between the two ER-style predictions based on average degree,
+which supports the main qualitative lesson: ER formulas are useful reference
+scales, but real networks have structure that can change both the optimum size
+and the computational difficulty.
 
 \end{document}
